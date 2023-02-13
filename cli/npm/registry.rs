@@ -9,6 +9,7 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -335,6 +336,10 @@ impl RealNpmRegistryApiInner {
       }
 
       if maybe_package_info.is_none() {
+        // before querying network for this package ensure that it is a valid name
+        if !self.validate_package_name(name) {
+          return Err(anyhow!(format!("Invalid npm package name {name:?}")));
+        }
         maybe_package_info = self
           .load_package_info_from_registry(name)
           .await
@@ -357,6 +362,25 @@ impl RealNpmRegistryApiInner {
         }
       })
     }
+  }
+
+  // This is a very rudimentary check meant to filter out the names which could trip up URL construction
+  // This function ensures that:
+  //   - name is not empty
+  //   - contains only URL-safe characters which could break get_package_url()
+  // This filters out names with ':' like "ws:" and "wss:"
+  fn validate_package_name(&self, name: &str) -> bool {
+    if name.is_empty() {
+      return false;
+    }
+    let allowed_chars =
+      "!'()*-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~";
+    for c in name.chars() {
+      if !allowed_chars.contains(c) {
+        return false;
+      }
+    }
+    true
   }
 
   fn load_file_cached_package_info(
