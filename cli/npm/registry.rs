@@ -336,16 +336,11 @@ impl RealNpmRegistryApiInner {
       }
 
       if maybe_package_info.is_none() {
-        // before querying network for this package ensure that it is a valid name
-        if !self.validate_package_name(name) {
-          return Err(anyhow!(format!("Invalid npm package name {name:?}")));
-        }
-        maybe_package_info = self
-          .load_package_info_from_registry(name)
-          .await
-          .with_context(|| {
-          format!("Error getting response at {}", self.get_package_url(name))
-        })?;
+        maybe_package_info =
+          self
+            .load_package_info_from_registry(name)
+            .await
+            .with_context(|| format!("Error getting npm package {name:?}"))?;
       }
       let maybe_package_info = maybe_package_info.map(Arc::new);
 
@@ -362,25 +357,6 @@ impl RealNpmRegistryApiInner {
         }
       })
     }
-  }
-
-  // This is a very rudimentary check meant to filter out the names which could trip up URL construction
-  // This function ensures that:
-  //   - name is not empty
-  //   - contains only URL-safe characters which could break get_package_url()
-  // This filters out names with ':' like "ws:" and "wss:"
-  fn validate_package_name(&self, name: &str) -> bool {
-    if name.is_empty() {
-      return false;
-    }
-    let allowed_chars =
-      "!'()*-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~";
-    for c in name.chars() {
-      if !allowed_chars.contains(c) {
-        return false;
-      }
-    }
-    true
   }
 
   fn load_file_cached_package_info(
@@ -464,7 +440,7 @@ impl RealNpmRegistryApiInner {
       ));
     }
 
-    let package_url = self.get_package_url(name);
+    let package_url = self.get_package_url(name)?;
     let guard = self.progress_bar.update(package_url.as_str());
 
     let maybe_bytes = self
@@ -481,8 +457,11 @@ impl RealNpmRegistryApiInner {
     }
   }
 
-  fn get_package_url(&self, name: &str) -> Url {
-    self.base_url.join(name).unwrap()
+  fn get_package_url(&self, name: &str) -> Result<Url, AnyError> {
+    match self.base_url.join(name) {
+      Ok(url) => Ok(url),
+      Err(_err) => Err(anyhow!(format!("Invalid npm package name {name:?}"))),
+    }
   }
 
   fn get_package_file_cache_path(&self, name: &str) -> PathBuf {
