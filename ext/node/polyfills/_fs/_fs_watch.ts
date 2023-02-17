@@ -111,35 +111,22 @@ export function watch(
 
   const watchPath = getValidatedPath(filename).toString();
 
-  let iterator: Deno.FsWatcher;
-  let timer: number;
-  // In tests, start the actual watcher a few msec later to avoid race condition
-  // error in test case in compat test case
-  // (parallel/test-fs-watch.js, parallel/test-fs-watchfile.js)
-  function createIterator() {
-    iterator = Deno.watchFs(watchPath, {
-      recursive: options?.recursive || false,
-    });
+  const iterator = Deno.watchFs(watchPath, {
+    recursive: options?.recursive || false,
+  });
 
-    asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
-      if (done) return;
-      fsWatcher.emit(
-        "change",
-        convertDenoFsEventToNodeFsEvent(val.kind),
-        basename(val.paths[0]),
-      );
-    }, (e) => {
-      fsWatcher.emit("error", e);
-    });
-  }
-  if (Deno.isTest) {
-    timer = setTimeout(createIterator, 5);
-  } else {
-    createIterator();
-  }
+  asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
+    if (done) return;
+    fsWatcher.emit(
+      "change",
+      convertDenoFsEventToNodeFsEvent(val.kind),
+      basename(val.paths[0]),
+    );
+  }, (e) => {
+    fsWatcher.emit("error", e);
+  });
 
   const fsWatcher = new FSWatcher(() => {
-    clearTimeout(timer);
     try {
       iterator?.close();
     } catch (e) {
