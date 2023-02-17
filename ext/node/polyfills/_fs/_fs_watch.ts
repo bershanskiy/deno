@@ -112,10 +112,11 @@ export function watch(
   const watchPath = getValidatedPath(filename).toString();
 
   let iterator: Deno.FsWatcher;
-  // Start the actual watcher a few msec later to avoid race condition
+  let timer: number;
+  // In tests, start the actual watcher a few msec later to avoid race condition
   // error in test case in compat test case
   // (parallel/test-fs-watch.js, parallel/test-fs-watchfile.js)
-  const timer = setTimeout(() => {
+  function createIterator() {
     iterator = Deno.watchFs(watchPath, {
       recursive: options?.recursive || false,
     });
@@ -130,7 +131,12 @@ export function watch(
     }, (e) => {
       fsWatcher.emit("error", e);
     });
-  }, 5);
+  }
+  if (Deno.isTest) {
+    timer = setTimeout(createIterator, 5);
+  } else {
+    createIterator();
+  }
 
   const fsWatcher = new FSWatcher(() => {
     clearTimeout(timer);
